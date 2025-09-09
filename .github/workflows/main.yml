@@ -44,9 +44,6 @@ jobs:
           
       # 步驟 4: 執行 PTT 登入腳本
       - name: Run PTT auto login script
-        env:
-          PTT_ID: ${{ secrets.PTT_ID }}
-          PTT_PASS: ${{ secrets.PTT_PASS }}
         # 我們不再切換工作目錄，而是直接從專案根目錄執行，並給出檔案的完整相對路徑。
         # 這是最穩定、最不會出錯的方法。
-        run: python PttAuto.py
+        run: python PttAuto.py ${{ secrets.PTT_ID }} ${{ secrets.PTT_PASS }}
