@@ -39,4 +39,4 @@ jobs:
           PTT_PASS: ${{ secrets.PTT_PASS }}
         # 我們不再切換工作目錄，而是直接從專案根目錄執行，並給出檔案的完整相對路徑。
         # 這是最穩定、最不會出錯的方法。
-        run: python PttAutoLoginPost/main.py
+        run: python PttAutoLoginPost/PttAuto.py
