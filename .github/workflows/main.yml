@@ -30,7 +30,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install beautifulsoup4 # 根據專案 requirements.txt 安裝
+          pip install beautifulsoup4 asyncssh # 根據專案 requirements.txt 安裝
           
       - name: Debug - 檢視工作目錄與檔案結構
         run: |
