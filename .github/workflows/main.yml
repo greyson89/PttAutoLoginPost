@@ -34,9 +34,10 @@ jobs:
 
       # 步驟 4: 執行 PTT 登入腳本
       - name: Run PTT auto login script
-        # 這裡是最關鍵的地方：
-        # 我們將儲存在 Secrets 中的帳號密碼，透過環境變數 (env) 的方式傳遞給 Python 程式
         env:
           PTT_ID: ${{ secrets.PTT_ID }}
           PTT_PASS: ${{ secrets.PTT_PASS }}
-        run: python PttAutoLoginPost/main.py # 執行專案的主程式 main.py
+        # 解決方案：先使用 working-directory 進入 PttAutoLoginPost 子資料夾
+        working-directory: ./PttAutoLoginPost
+        # 然後，直接執行該資料夾內的 main.py 即可
+        run: python main.py
