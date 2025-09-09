@@ -9,7 +9,7 @@ on:
   schedule:
     # 使用 UTC 時間，'30 16 * * *' 代表每天的 16:30 UTC
     # 換算成台灣時間 (UTC+8) 就是午夜 00:30
-    - cron: '0 17 * * *'
+    - cron: '0 8 * * *'
 
 jobs:
   build:
@@ -47,3 +47,8 @@ jobs:
         # 我們不再切換工作目錄，而是直接從專案根目錄執行，並給出檔案的完整相對路徑。
         # 這是最穩定、最不會出錯的方法。
         run: python PttAuto.py ${{ secrets.PTT_ID }} ${{ secrets.PTT_PASS }}
+
+      - name: Run PTT_2 auto login script
+        # 我們不再切換工作目錄，而是直接從專案根目錄執行，並給出檔案的完整相對路徑。
+        # 這是最穩定、最不會出錯的方法。
+        run: python PttAuto.py ${{ secrets.PTT_ID2 }} ${{ secrets.PTT_PASS }}
