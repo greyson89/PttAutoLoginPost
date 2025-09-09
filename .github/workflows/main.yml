@@ -39,4 +39,4 @@ jobs:
         env:
           PTT_ID: ${{ secrets.PTT_ID }}
           PTT_PASS: ${{ secrets.PTT_PASS }}
-        run: python main.py # 執行專案的主程式 main.py
+        run: python PttAutoLoginPost/main.py # 執行專案的主程式 main.py
