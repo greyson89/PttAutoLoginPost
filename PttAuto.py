@@ -349,12 +349,15 @@ class Ptt:
             return False
 
 
-async def main() -> None:
-    """主程式入口點"""
+async def main(user: str, password: str) -> None:
+    """主程式入口點
+    
+    Args:
+        user: PTT 使用者帳號
+        password: PTT 使用者密碼
+    """
     # 設定連線參數
     host: str = 'ptt.cc'
-    user: str = 'Your PTT ID'      # 請修改為您的 PTT 帳號
-    password: str = 'Your PTT Password'  # 請修改為您的 PTT 密碼
 
     # 建立 PTT 連線物件
     ptt: Optional[Ptt] = None
@@ -375,14 +378,16 @@ async def main() -> None:
             return
 
         # 發文到 test 看板
-        print("開始發文...")
-        post_success = await ptt.post('test', '發文文字測試', '這是一篇測試,哇哈哈')
-        if post_success:
-            print("發文成功！")
-            # 只有成功發文才正常登出
-            await ptt.logout()
-        else:
-            print("發文失敗")
+        # print("開始發文...")
+        # post_success = await ptt.post('test', '發文文字測試', '這是一篇測試,哇哈哈')
+        # if post_success:
+        #     print("發文成功！")
+        #     # 只有成功發文才正常登出
+        #     await ptt.logout()
+        # else:
+        #     print("發文失敗")
+		
+        await ptt.logout()
 
     except KeyboardInterrupt:
         print("\n使用者中斷程式")
@@ -406,8 +411,17 @@ async def main() -> None:
 
 def run_main() -> None:
     """運行主程式的同步包裝器"""
+    # 檢查命令列參數
+    if len(sys.argv) != 3:
+        print("使用方法: python PttAuto.py <PTT帳號> <PTT密碼>")
+        print("範例: python PttAuto.py myaccount mypassword")
+        sys.exit(1)
+    
+    user = sys.argv[1]
+    password = sys.argv[2]
+    
     try:
-        asyncio.run(main())
+        asyncio.run(main(user, password))
     except KeyboardInterrupt:
         print("\n程式被使用者中斷")
 
