@@ -1,0 +1,40 @@
+[project]
+name = "ptt-auto-login-post"
+version = "1.0.0"
+description = "PTT 自動登入發文工具，支援 SSH 連線和 Telegram 通知"
+authors = [
+    {name = "Your Name", email = "your.email@example.com"}
+]
+readme = "README.md"
+requires-python = ">=3.12"
+keywords = ["ptt", "bbs", "ssh", "telegram", "notification"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+
+dependencies = [
+    "asyncssh>=2.0.0",
+    "requests>=2.32.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/your-username/PttAutoLoginPost"
+"Bug Reports" = "https://github.com/your-username/PttAutoLoginPost/issues"
+"Source" = "https://github.com/your-username/PttAutoLoginPost"
+
+[project.scripts]
+ptt-auto = "PttAuto:run_main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+dev-dependencies = []
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]

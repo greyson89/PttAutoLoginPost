@@ -46,9 +46,9 @@ jobs:
       - name: Run PTT auto login script
         # 我們不再切換工作目錄，而是直接從專案根目錄執行，並給出檔案的完整相對路徑。
         # 這是最穩定、最不會出錯的方法。
-        run: python PttAuto.py ${{ secrets.PTT_ID }} ${{ secrets.PTT_PASS }}
+        run: python PttAuto.py ${{ secrets.PTT_ID }} ${{ secrets.PTT_PASS }} ${{ secrets.TG_BOT_TOKEN }} ${{ secrets.TG_USER_ID }}
 
       - name: Run PTT_2 auto login script
         # 我們不再切換工作目錄，而是直接從專案根目錄執行，並給出檔案的完整相對路徑。
         # 這是最穩定、最不會出錯的方法。
-        run: python PttAuto.py ${{ secrets.PTT_ID2 }} ${{ secrets.PTT_PASS }}
+        run: python PttAuto.py ${{ secrets.PTT_ID2 }} ${{ secrets.PTT_PASS }} ${{ secrets.TG_BOT_TOKEN }} ${{ secrets.TG_USER_ID }}

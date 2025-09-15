@@ -14,23 +14,47 @@ except ImportError:
     print("請執行：pip install asyncssh")
     sys.exit(1)
 
+try:
+    from tg_notify import send_telegram_message
+except ImportError:
+    print("警告：無法匯入 tg_notify，Telegram 通知功能將無法使用")
+    send_telegram_message = None
+
 
 class Ptt:
-    def __init__(self, host: str, user: str, password: str) -> None:
+    def __init__(self, host: str, user: str, password: str, tg_token: Optional[str] = None, tg_user_id: Optional[str] = None) -> None:
         """初始化 PTT SSH 連線
 
         Args:
             host: PTT 主機位址
             user: PTT 使用者帳號
             password: PTT 使用者密碼
+            tg_token: Telegram Bot Token (可選)
+            tg_user_id: Telegram 使用者 ID (可選)
         """
         self._host: str = host
         self._user: str = user
         self._password: str = password
+        self._tg_token: Optional[str] = tg_token
+        self._tg_user_id: Optional[str] = tg_user_id
         self._ssh_conn: Optional[asyncssh.SSHClientConnection] = None
         self._ssh_process: Optional[asyncssh.SSHClientProcess] = None
         self._content: str = ''
         self._connected: bool = False
+
+    def _send_notification(self, message: str) -> None:
+        """發送 Telegram 通知
+
+        Args:
+            message: 要發送的訊息
+        """
+        if self._tg_token and self._tg_user_id and send_telegram_message:
+            try:
+                send_telegram_message(message, self._tg_token, self._tg_user_id)
+            except Exception as e:
+                print(f"發送 Telegram 通知失敗: {e}")
+        else:
+            print("Telegram 通知未設定或不可用")
 
     async def is_success(self) -> bool:
         """檢查登入狀態並處理各種情況
@@ -41,6 +65,7 @@ class Ptt:
         # 檢查登入失敗情況
         if "密碼不對" in self._content:
             print("密碼不對或無此帳號。程式結束")
+            self._send_notification(f"PTT 登入失敗：密碼不對或無此帳號 (帳號: {self._user})")
             # 立即斷開連線，不再進行其他操作
             await self.disconnect()
             return False
@@ -48,26 +73,30 @@ class Ptt:
         # 處理重複登入
         if "您想刪除其他重複登入" in self._content:
             print("刪除其他重複登入的連線....")
-            await self._write_data("y\r\n")
+            if not await self._write_data("y\r\n"):
+                return False
             await asyncio.sleep(10)
             self._content = await self._read_data()
 
         # 處理其他提示
         if "請按任意鍵繼續" in self._content:
             print("資訊頁面，按任意鍵繼續...")
-            await self._write_data("\r\n")
+            if not await self._write_data("\r\n"):
+                return False
             await asyncio.sleep(6)
             self._content = await self._read_data()
 
         if "您要刪除以上錯誤嘗試" in self._content:
             print("刪除以上錯誤嘗試...")
-            await self._write_data("y\r\n")
+            if not await self._write_data("y\r\n"):
+                return False
             await asyncio.sleep(6)
             self._content = await self._read_data()
 
         if "您有一篇文章尚未完成" in self._content:
             print('刪除尚未完成的文章....')
-            await self._write_data("q\r\n")
+            if not await self._write_data("q\r\n"):
+                return False
             await asyncio.sleep(6)
             self._content = await self._read_data()
 
@@ -96,9 +125,11 @@ class Ptt:
 
         if any(indicator in self._content for indicator in success_indicators):
             print("登入成功！")
+            self._send_notification(f"PTT 登入成功 (帳號: {self._user})")
             return True
         else:
             print("登入狀態不明確，可能需要進一步處理")
+            self._send_notification(f"PTT 登入狀態不明確 (帳號: {self._user})")
             return False
 
     async def input_user_password(self) -> bool:
@@ -121,10 +152,12 @@ class Ptt:
 
         if has_login_prompt:
             print('輸入帳號中...')
-            await self._write_data(self._user + "\r\n")
+            if not await self._write_data(self._user + "\r\n"):
+                return False
             await asyncio.sleep(1)
             print('輸入密碼中...')
-            await self._write_data(self._password + "\r\n")
+            if not await self._write_data(self._password + "\r\n"):
+                return False
             await asyncio.sleep(3)
             self._content = await self._read_data(timeout=5.0)
             return await self.is_success()
@@ -132,51 +165,98 @@ class Ptt:
             print("未找到登入提示，網站可能繁忙或連線異常")
             return False
 
-    async def connect(self) -> bool:
-        """使用 luit + SSH 連線到 PTT
+    async def connect(self, max_retries: int = 3, retry_delay: float = 5.0) -> bool:
+        """使用 luit + SSH 連線到 PTT，包含重試機制
+
+        Args:
+            max_retries: 最大重試次數
+            retry_delay: 重試間隔時間（秒）
 
         Returns:
             bool: 連線是否成功
         """
-        try:
-            # 使用 luit -encoding big5 ssh bbs@ptt.cc 的方式連線
-            # 這樣可以正確處理 Big5 編碼
-            self._ssh_conn = await asyncssh.connect(
-                self._host,
-                username='bbs',       # 使用 bbs 作為使用者名稱
-                password=None,        # SSH 不需要密碼
-                known_hosts=None,     # 忽略 host key 檢查
-                client_keys=None      # 不使用密鑰認證
-            )
+        # 備用 PTT 伺服器列表
+        hosts = [
+            'ptt.cc',
+            'ptt1.cc',
+            'ptt2.cc'
+        ]
 
-            # 啟動互動式 shell，模擬 luit 的環境
-            self._ssh_process = await self._ssh_conn.create_process(
-                term_type='vt100',     # 使用 vt100 終端類型
-                term_size=(80, 24),    # 標準終端尺寸
-                encoding='big5',       # 設定 Big5 編碼
-                env={
-                    'LANG': 'zh_TW.Big5',
-                    'LC_ALL': 'zh_TW.Big5',
-                    'TERM': 'vt100'
-                },
-                errors='replace'       # 用替換字符處理編碼錯誤
-            )
+        for attempt in range(max_retries):
+            for host_idx, host in enumerate(hosts):
+                try:
+                    print(f"嘗試連線到 {host} (第 {attempt + 1}/{max_retries} 次，伺服器 {host_idx + 1}/{len(hosts)})")
 
-            self._connected = True
+                    # 使用較長的連線超時時間
+                    self._ssh_conn = await asyncio.wait_for(
+                        asyncssh.connect(
+                            host,
+                            username='bbs',       # 使用 bbs 作為使用者名稱
+                            password=None,        # SSH 不需要密碼
+                            known_hosts=None,     # 忽略 host key 檢查
+                            client_keys=None,     # 不使用密鑰認證
+                            connect_timeout=15.0, # 設定連線超時
+                            keepalive_interval=30 # 保持連線活躍
+                        ),
+                        timeout=20.0  # 總體超時時間
+                    )
 
-            # 讀取初始歡迎訊息
-            await asyncio.sleep(3)
-            data = await self._read_data(timeout=5.0)
-            self._content = data
+                    # 啟動互動式 shell，模擬 luit 的環境
+                    self._ssh_process = await self._ssh_conn.create_process(
+                        term_type='vt100',     # 使用 vt100 終端類型
+                        term_size=(80, 24),    # 標準終端尺寸
+                        encoding='big5',       # 設定 Big5 編碼
+                        env={
+                            'LANG': 'zh_TW.Big5',
+                            'LC_ALL': 'zh_TW.Big5',
+                            'TERM': 'vt100'
+                        },
+                        errors='replace'       # 用替換字符處理編碼錯誤
+                    )
 
-            if "系統過載" in self._content:
-                print('系統過載, 請稍後再來')
-                await self.disconnect()
-                sys.exit(1)
-            return True
-        except Exception as e:
-            print(f"SSH 連線錯誤: {e}")
-            return False
+                    self._connected = True
+                    self._host = host  # 更新成功連線的主機
+
+                    # 讀取初始歡迎訊息
+                    await asyncio.sleep(3)
+                    data = await self._read_data(timeout=8.0)
+                    self._content = data
+
+                    if "系統過載" in self._content:
+                        print(f'{host} 系統過載，嘗試下一個伺服器...')
+                        await self.disconnect()
+                        continue
+
+                    print(f"成功連線到 {host}")
+                    return True
+
+                except asyncio.TimeoutError:
+                    print(f"連線到 {host} 超時")
+                    if self._ssh_conn:
+                        try:
+                            self._ssh_conn.close()
+                        except:
+                            pass
+                        self._ssh_conn = None
+                    continue
+
+                except Exception as e:
+                    print(f"連線到 {host} 失敗: {e}")
+                    if self._ssh_conn:
+                        try:
+                            self._ssh_conn.close()
+                        except:
+                            pass
+                        self._ssh_conn = None
+                    continue
+
+            # 如果所有伺服器都失敗，等待後重試
+            if attempt < max_retries - 1:
+                print(f"所有伺服器連線失敗，{retry_delay} 秒後重試...")
+                await asyncio.sleep(retry_delay)
+
+        print("達到最大重試次數，連線失敗")
+        return False
 
     async def disconnect(self) -> None:
         """斷開 SSH 連線"""
@@ -246,30 +326,69 @@ class Ptt:
             print(f"讀取資料錯誤: {e}")
             return ''
 
-    async def _write_data(self, data: str) -> None:
+    async def _check_connection_health(self) -> bool:
+        """檢查連線健康狀態
+
+        Returns:
+            bool: 連線是否健康
+        """
+        if not self._connected or not self._ssh_conn or not self._ssh_process:
+            return False
+
+        try:
+            # 檢查 process 是否還活著
+            if self._ssh_process.exit_status is not None:
+                print("SSH process 已結束")
+                self._connected = False
+                return False
+
+            # 簡單的連線測試：嘗試寫入空字符
+            if self._ssh_process.stdin and not self._ssh_process.stdin.is_closing():
+                return True
+            else:
+                print("SSH stdin 已關閉")
+                self._connected = False
+                return False
+
+        except Exception as e:
+            print(f"檢查連線健康狀態時發生錯誤: {e}")
+            self._connected = False
+            return False
+
+    async def _write_data(self, data: str, retry_on_failure: bool = True) -> bool:
         """寫入 SSH 資料
 
         Args:
             data: 要寫入的資料
+            retry_on_failure: 失敗時是否嘗試重新連線
+
+        Returns:
+            bool: 寫入是否成功
         """
-        if not self._connected:
+        if not await self._check_connection_health():
+            if retry_on_failure:
+                print("連線不健康，嘗試重新連線...")
+                if await self.connect():
+                    return await self._write_data(data, False)  # 避免無限遞迴
             print("連線已斷開，無法寫入資料")
-            return
+            return False
 
         if self._ssh_process and self._ssh_process.stdin:
             # 由於已經設定 encoding='big5'，asyncSSH 會自動處理編碼
             try:
                 self._ssh_process.stdin.write(data)
                 # 設置超時避免無限等待
-                await asyncio.wait_for(self._ssh_process.stdin.drain(), timeout=2.0)
+                await asyncio.wait_for(self._ssh_process.stdin.drain(), timeout=3.0)
+                return True
             except asyncio.TimeoutError:
                 print("寫入資料超時")
-                # 連線可能有問題，標記為斷開
                 self._connected = False
+                return False
             except Exception as e:
                 print(f"寫入資料錯誤: {e}")
-                # 連線可能有問題，標記為斷開
                 self._connected = False
+                return False
+        return False
 
     async def login(self) -> bool:
         """執行登入程序
@@ -294,8 +413,8 @@ class Ptt:
         try:
             print("登出中...")
             # q = 上一頁，直到回到首頁為止，g = 離開，再見
-            await self._write_data("qqqqqqqqqg\r\ny\r\n")
-            await asyncio.sleep(1)
+            if await self._write_data("qqqqqqqqqg\r\ny\r\n"):
+                await asyncio.sleep(1)
             await self.disconnect()
             print("----------------------------------------------")
             print("------------------ 登出完成 ------------------")
@@ -321,25 +440,34 @@ class Ptt:
         try:
             print("發文中...")
             # s 進入要發文的看板
-            await self._write_data('s')
-            await self._write_data(board + '\r\n')
+            if not await self._write_data('s'):
+                return False
+            if not await self._write_data(board + '\r\n'):
+                return False
             await asyncio.sleep(1)
-            await self._write_data('q')
+            if not await self._write_data('q'):
+                return False
             await asyncio.sleep(2)
             # 請參考 http://donsnotes.com/tech/charsets/ascii.html#cntrl
             # Ctrl+P
-            await self._write_data('\x10')
+            if not await self._write_data('\x10'):
+                return False
             # 發文類別
-            await self._write_data('1\r\n')
-            await self._write_data(title + '\r\n')
+            if not await self._write_data('1\r\n'):
+                return False
+            if not await self._write_data(title + '\r\n'):
+                return False
             await asyncio.sleep(1)
             # Ctrl+X
-            await self._write_data(content + '\x18')
+            if not await self._write_data(content + '\x18'):
+                return False
             await asyncio.sleep(1)
             # 儲存文章
-            await self._write_data('s\r\n')
+            if not await self._write_data('s\r\n'):
+                return False
             # 不加簽名檔
-            await self._write_data('0\r\n')
+            if not await self._write_data('0\r\n'):
+                return False
             print("----------------------------------------------")
             print("------------------ 發文成功 ------------------")
             print("----------------------------------------------")
@@ -349,12 +477,14 @@ class Ptt:
             return False
 
 
-async def main(user: str, password: str) -> None:
+async def main(user: str, password: str, tg_token: Optional[str] = None, tg_user_id: Optional[str] = None) -> None:
     """主程式入口點
-    
+
     Args:
         user: PTT 使用者帳號
         password: PTT 使用者密碼
+        tg_token: Telegram Bot Token (可選)
+        tg_user_id: Telegram 使用者 ID (可選)
     """
     # 設定連線參數
     host: str = 'ptt.cc'
@@ -364,17 +494,19 @@ async def main(user: str, password: str) -> None:
     post_success: bool = False
 
     try:
-        ptt = Ptt(host, user, password)
+        ptt = Ptt(host, user, password, tg_token, tg_user_id)
         await asyncio.sleep(1)
 
         # 嘗試連線
         if not await ptt.connect():
             print("連線失敗")
+            ptt._send_notification(f"PTT 連線失敗 (帳號: {user})")
             return
 
         # 嘗試登入
         if not await ptt.login():
             print("登入失敗")
+            ptt._send_notification(f"PTT 登入失敗 (帳號: {user})")
             return
 
         # 發文到 test 看板
@@ -412,16 +544,27 @@ async def main(user: str, password: str) -> None:
 def run_main() -> None:
     """運行主程式的同步包裝器"""
     # 檢查命令列參數
-    if len(sys.argv) != 3:
-        print("使用方法: python PttAuto.py <PTT帳號> <PTT密碼>")
-        print("範例: python PttAuto.py myaccount mypassword")
+    if len(sys.argv) < 3 or len(sys.argv) > 5:
+        print("使用方法:")
+        print("  基本用法: python PttAuto.py <PTT帳號> <PTT密碼>")
+        print("  含 Telegram 通知: python PttAuto.py <PTT帳號> <PTT密碼> <Telegram_Token> <Telegram_User_ID>")
+        print("範例:")
+        print("  python PttAuto.py myaccount mypassword")
+        print("  python PttAuto.py myaccount mypassword 123456:ABC-DEF1234 987654321")
         sys.exit(1)
-    
+
     user = sys.argv[1]
     password = sys.argv[2]
-    
+    tg_token = sys.argv[3] if len(sys.argv) >= 4 else None
+    tg_user_id = sys.argv[4] if len(sys.argv) >= 5 else None
+
+    # 檢查 Telegram 參數的完整性
+    if (tg_token and not tg_user_id) or (not tg_token and tg_user_id):
+        print("錯誤：Telegram Token 和 User ID 必須同時提供")
+        sys.exit(1)
+
     try:
-        asyncio.run(main(user, password))
+        asyncio.run(main(user, password, tg_token, tg_user_id))
     except KeyboardInterrupt:
         print("\n程式被使用者中斷")
 

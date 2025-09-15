@@ -2,6 +2,9 @@
 # SSH 連線庫
 asyncssh>=2.0.0
 
+# HTTP 請求庫（用於 Telegram 通知）
+requests>=2.32.0
+
 # asyncssh 的依賴套件（通常會自動安裝）
 # cryptography>=3.0.0
 # typing_extensions>=4.0.0
