@@ -178,8 +178,8 @@ class Ptt:
         # 備用 PTT 伺服器列表
         hosts = [
             'ptt.cc',
-            'ptt1.cc',
-            'ptt2.cc'
+            'ptt.cc',
+            'ptt.cc'
         ]
 
         for attempt in range(max_retries):
