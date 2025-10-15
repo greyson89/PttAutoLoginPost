@@ -6,10 +6,10 @@ on:
   workflow_dispatch:
 
   # 2. 設定排程，每日自動執行
-  schedule:
+  # schedule:
     # 使用 UTC 時間，'30 16 * * *' 代表每天的 16:30 UTC
     # 換算成台灣時間 (UTC+8) 就是午夜 00:30
-    - cron: '5 0,4,12 * * *'
+    # - cron: '5 0,4,12 * * *'
 
 jobs:
   build:
